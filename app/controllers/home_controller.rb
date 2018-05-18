@@ -19,7 +19,7 @@ class HomeController < ApplicationController
   def rate_limit_reached
     rate_limit = ::RateLimit.new(request.ip.to_s)
     limit_reached, time_to_wait = rate_limit.limit_reached_and_time_to_wait
-    @rate_limit.increment_count unless limit_reached
+    rate_limit.increment_request_count unless limit_reached
 
     return limit_reached, time_to_wait
   end

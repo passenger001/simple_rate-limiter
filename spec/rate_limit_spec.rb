@@ -1,4 +1,5 @@
 require 'rate_limit'
+require 'timecop'
 
 describe 'RateLimit' do
   let(:redis_test_url) { ENV['REDIS_URL'] }
@@ -43,12 +44,17 @@ describe 'RateLimit' do
     let!(:total_chunks) { limit_duration / chunk_size }
     let(:rate_limit) { RateLimit.new('123', redis_test_url) }
     let(:redis) { Redis.new(url: redis_rest_url) }
+    let(:seconds_past) { 2700 }
 
     before do
-      rate_limit.redis.flushdb
       stub_const('RateLimit::CHUNK_SIZE', chunk_size)
       stub_const('RateLimit::TOTAL_CHUNKS', total_chunks)
       stub_const('RateLimit::LIMIT_DURATION', limit_duration)
+    end
+
+    after do
+      rate_limit.redis.flushdb
+      Timecop.return
     end
 
     context 'when limit is not reached' do
@@ -67,10 +73,13 @@ describe 'RateLimit' do
       end
     end
     context 'when limit is reached at chunk 0 and current chunk is 3' do
-
+      let(:exceeded_chunk_time) { Time.local(2018, 01,02, 12, 1) }
       it 'returns true and 900 seconds(1 chunk_size) to wait' do
+        Timecop.freeze(exceeded_chunk_time)
         rate_limit.increment_request_count(0, 100)
+        Timecop.freeze(exceeded_chunk_time + seconds_past)
         allow(rate_limit).to receive(:current_chunk). and_return(3)
+        allow(rate_limit.redis).to receive(:ttl). and_return(limit_duration - seconds_past)
         expect(rate_limit.limit_reached_and_time_to_wait).to eq([true, 900])
       end
     end
@@ -84,19 +93,27 @@ describe 'RateLimit' do
     end
 
     context 'when limit is reached at chunk 2 and current chunk is 3' do
+      let(:exceeded_chunk_time) { Time.local(2018, 01,02, 12, 35) }
       it 'returns true and 2700 seconds to wait' do
+        Timecop.freeze(exceeded_chunk_time)
         rate_limit.increment_request_count(2, 100)
+        Timecop.freeze(exceeded_chunk_time + seconds_past)
         allow(rate_limit).to receive(:current_chunk). and_return(3)
+        allow(rate_limit.redis).to receive(:ttl). and_return(limit_duration - chunk_size)
         expect(rate_limit.limit_reached_and_time_to_wait).to eq([true, 2700])
       end
     end
 
     context 'when requests are distributed and limit reached at 2 and current chunk is 3' do
-      it 'returns true and 900 seconds(1 chunk_size) to wait' do
+      let(:exceeded_chunk_time) { Time.local(2018, 01,02, 12, 35) }
+      it 'returns true and 2700 seconds to wait' do
+        Timecop.freeze(exceeded_chunk_time)
         rate_limit.increment_request_count(0, 50)
         rate_limit.increment_request_count(2, 50)
+        Timecop.freeze(exceeded_chunk_time + seconds_past)
         allow(rate_limit).to receive(:current_chunk). and_return(3)
-        expect(rate_limit.limit_reached_and_time_to_wait).to eq([true, 900])
+        allow(rate_limit.redis).to receive(:ttl). and_return(limit_duration - chunk_size)
+        expect(rate_limit.limit_reached_and_time_to_wait).to eq([true, 2700])
       end
     end
   end
