@@ -13,9 +13,18 @@ Challenge accepted.
 
 ## How
 
-Making use of concepts from consistent hashing to store requests in buckets or chunks arranged in a circle (or between the numbers in a clock/watch).
+Making use of concepts from consistent hashing, we store request counts in buckets or chunks arranged in a circle (or between the numbers in a clock/watch).
 
-By performing modulo operation on current time in seconds by 3600 seconds, we can get the current chunk of the hour to save requests in.
+By performing modulo operation on current time in seconds by 3600 seconds (`Time.now.to_i % 3600`), we can get the current second of the hour.
+We then divide this by 'chunk size' to get the current chunk.
+
+The current chunk spans a few seconds and any requests received during these seconds, updates its request count. 
+
+The storage structure need not be too complex and would require regular integer increments and expiration. Relational DBs would be overkill with unnecessary overhead. Redis is perfectly suited for this.
+
+Request details and chunks are all stored in Redis as a hash structure like:
+
+`Request_IP: { chunk_number0: request_count, chunk_number1: request_count,.... chunk_numberN: request_count }` 
 
 ## Steps to get it running
 
